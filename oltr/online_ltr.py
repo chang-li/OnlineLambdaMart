@@ -52,19 +52,19 @@ class CascadeModel(AbstractClickSimulator):
         return c_coin
 
 
-class LTRData:
+class OnlineLTR:
 	@statismethod
 	def parse_libsvm_line(line):
 		# TODO: Extract label qid and features and store them in a dict
 		#       OR use a libsvm data importer. @Chang: Can you look into this?
 
-
 	def __init__(self, data_path='../data/mslr_fold1_test_sample.txt'):
 		with open(data_path) as fh:
 			query_doc_pairs = [LTRData.parse_libsvm_line(line) for line in fh.readlines()]
-		self.qset = {}
+		self.full_qset = {}
 		for qd_pair in query_doc_pairs:
-			self.qset[qd_pair['qid']] = qd_pair
+			self.full_qset[qd_pair['qid']] = qd_pair
+		self.ranker = None
 
 	def to_df(self):
 		"""Convert self.qset to dataframes that could be used to train a LightGbM model. 
@@ -82,3 +82,16 @@ class LTRData:
 		Returns:
 			A pair of numpy arrays that assign labels and scores to the documents of each query.
 		"""
+		self.labels = ...
+		self.scores = ranker.
+
+	def apply_click_model_to_labels_and_scores(self, click_model, ranker, num_queries):
+		"""This method samples some queries and generates clicks for them based on a click model"""
+
+	def generate_training_data_from_clicks(self):
+		"""This method uses the clicks geenrated by apply_click_model_to_labels_and_scores to
+		create a training dataset."""
+
+	def update_ranker(self):
+		""""This method uses the training data from generate_training_data_from_clicks to
+		improve the ranker."""
