@@ -270,8 +270,8 @@ class OnlineLTR(object):
 
         Returns:
             A tuple of (train_features, train_labels):
-                train_features: numpy 2d-array #observed docs * dimension
-                train_labels: numpy 1d-array # observed docs
+                train_features: list of observed docs per query
+                train_labels: list of click feedback per query
         """
         # last observed position of each ranking
         last_pos = []
@@ -284,8 +284,7 @@ class OnlineLTR(object):
             train_labels.append(click[:last_pos[-1]])
 
         train_features = [self.qset[query_ids[i]]['feature'][rankings[i]][:last_pos[i]] for i in range(len(query_ids))]
-        train_features = np.concatenate(train_features)
-        train_labels = np.concatenate(train_labels)
+
         return (train_features, train_labels)
 
     def update_ranker(self, training_data):
@@ -306,7 +305,7 @@ def oltr_loop(data_path, num_iterations=10, num_queries=5):
 
         print('iteration: ', ind)
         print('number of clicks', sum([sum(ck) for ck in clicks]))
-        print('number of training samples', training_data[0].shape)
+        print('number of training samples', sum(td.shape[0] for td in training_data[0]))
 
 
 if __name__ == '__main__':
