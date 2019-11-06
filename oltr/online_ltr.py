@@ -1,7 +1,6 @@
 import numpy as np
 import scipy.sparse as sp
 
-
 # TODO(mzoghi): Remove these and import the click model
 Rel_To_Prob = {
     "perfect": {'c_prob': np.asarray([.0, .2, .4, .8, 1.]),
@@ -31,10 +30,10 @@ class AbstractClickSimulator(object):
 
 class DependentClickModel(AbstractClickSimulator):
     """
-    CascadeModel
+    DependentClickModel
     """
     def __init__(self, user_type='perfect'):
-        super(CascadeModel, self).__init__(user_type)
+        super(DependentClickModel, self).__init__(user_type)
         self.name = user_type
         self.c_prob = Rel_To_Prob[user_type]['c_prob']
         self.s_prob = Rel_To_Prob[user_type]['s_prob']
@@ -55,11 +54,6 @@ class DependentClickModel(AbstractClickSimulator):
 
 
 class OnlineLTR(object):
-
-    # @staticmethod
-    # def parse_libsvm_line(line):
-    #     # TODO: Extract label qid and features and store them in a dict
-    #     #       OR use a libsvm data importer. @Chang: Can you look into this?
 
     @staticmethod
     def load_from_text(data_path, dtype=np.float32, min_feature=None, max_feature=None, purge=False):
@@ -214,51 +208,106 @@ class OnlineLTR(object):
                                                len(feature_indices)))
         del data, indices, indptr
 
+        relevances = np.asarray(relevances)
         qset = {}
         for q_ind, qid in enumerate(query_ids):
             start_ind = query_indptr[q_ind]
             end_ind = query_indptr[q_ind+1]
-            qset[qid] = {'feature': feature_vectors[start_ind: end_ind],
-                         'relevance': relevances[start_ind: end_ind]}
+            qset[qid] = {'feature': feature_vectors[start_ind: end_ind].toarray(),
+                         'label': relevances[start_ind: end_ind]}
         return qset
 
-    def __init__(self, data_path='../data/mslr_fold1_test_sample.txt'):
+    def __init__(self, data_path='../data/mslr_fold1_test_sample.txt', seed=42):
         self.qset = OnlineLTR.load_from_text(data_path)
+        self.seed = seed
+        np.random.seed(seed)
 
-    def get_labels_and_scores(self, ranker, num_queries):
-        """Apply a ranker to a subsample of the data and get the scores and labels.
+    def get_labels_and_rankings(self, ranker, num_queries):
+        """Apply a ranker to a subsample of the data and get the labels and rankings.
 
         Args:
             ranker: A LightGBM model.
             num_queries: Number of queries to be sampled from self.qset
 
         Returns:
-            A pair of numpy arrays that assign labels and scores to the documents of each query.
+            A pair of lists that assign labels and rankings to the documents of each query, and the indices of each query.
         """
-        query_ids = np.random.choice(self.qset.keys(), num_queries)
-        labels = # Get the labels from self.qset
+        query_ids = np.random.choice(list(self.qset), num_queries)
+        per_query_n_docs = [self.qset[qid]['label'].shape[0] for qid in query_ids]
+        indices = [0] + np.cumsum(per_query_n_docs)
+        labels = [self.qset[qid]['label'] for qid in query_ids]
+
+        total_docs = sum([len(label) for label in labels])
+        # Get the labels from self.qset
         if ranker is None:
-            # TODO: Assign random scores
+            rankings = [np.random.permutation(label.shape[0]) for label in labels]
         # TBC
 
-    def apply_click_model_to_labels_and_scores(self, click_model, labels, scores):
-        """This method samples some queries and generates clicks for them based on a click model"""
+        return query_ids, indices, labels, rankings
 
-    def generate_training_data_from_clicks(self, clicks):
+    def apply_click_model_to_labels_and_scores(self, click_model, labels, rankings):
+        """This method samples some queries and generates clicks for them based on a click model
+
+        Args:
+            click_model: a click model
+            labels: true labels of documents
+            rankings: ranking of documents of each query
+
+        Returns:
+            A list of clicks of documents of each query
+        """
+        clicks = [click_model.get_click(labels[i][rankings[i]]) for i in range(len(rankings))]
+        return clicks
+
+    def generate_training_data_from_clicks(self, query_ids, clicks, rankings):
         """This method uses the clicks geenrated by apply_click_model_to_labels_and_scores to
-        create a training dataset."""
+        create a training dataset.
+
+        Args:
+            query_ids: the sampled query ids
+            indices: indices of each query
+            clicks: clicks from the click model
+
+        Returns:
+            A tuple of (train_features, train_labels):
+                train_features: numpy 2d-array #observed docs * dimension
+                train_labels: numpy 1d-array # observed docs
+        """
+        # last observed position of each ranking
+        last_pos = []
+        train_labels = []
+        for click in clicks:
+            if sum(click) == 0:
+                last_pos.append(len(click))
+            else:
+                last_pos.append(np.where(click)[0][-1]+1)
+            train_labels.append(click[:last_pos[-1]])
+
+        train_features = [self.qset[query_ids[i]]['feature'][rankings[i]][:last_pos[i]] for i in range(len(query_ids))]
+        train_features = np.concatenate(train_features)
+        train_labels = np.concatenate(train_labels)
+        return (train_features, train_labels)
 
     def update_ranker(self, training_data):
         """"This method uses the training data from generate_training_data_from_clicks to
         improve the ranker."""
+        train_features, train_labels = training_data
+
 
 def oltr_loop(data_path, num_iterations=10, num_queries=5):
     learner = OnlineLTR(data_path)
     ranker = None
     click_model = DependentClickModel(user_type='pure_cascade')
     for ind in range(num_iterations):
-        labels, score = learner.get_labels_and_scores(ranker, num_queries)
-        clicks = learner.apply_click_model_to_labels_and_scores(click_model, labels, scores)
-        training_data = learner.generate_training_data_from_clicks(clicks)
+        query_ids, indices, labels, rankings = learner.get_labels_and_rankings(ranker, num_queries)
+        clicks = learner.apply_click_model_to_labels_and_scores(click_model, labels, rankings)
+        training_data = learner.generate_training_data_from_clicks(query_ids, clicks, rankings)
         ranker = learner.update_ranker(training_data)
 
+        print('iteration: ', ind)
+        print('number of clicks', sum([sum(ck) for ck in clicks]))
+        print('number of training samples', training_data[0].shape)
+
+
+if __name__ == '__main__':
+    oltr_loop('../data/mslr_fold1_test_sample.txt')

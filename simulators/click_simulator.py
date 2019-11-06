@@ -24,12 +24,12 @@ class AbstractClickSimulator(object):
         return self.name
 
 
-class CascadeModel(AbstractClickSimulator):
+class DependentClickModel(AbstractClickSimulator):
     """
-    CascadeModel
+    DependentClickModel
     """
     def __init__(self, user_type='perfect'):
-        super(CascadeModel, self).__init__(user_type)
+        super(DependentClickModel, self).__init__(user_type)
         self.name = user_type
         self.c_prob = Rel_To_Prob[user_type]['c_prob']
         self.s_prob = Rel_To_Prob[user_type]['s_prob']
@@ -63,5 +63,5 @@ class PBM(AbstractClickSimulator):
     def get_click(self, r):
         assert len(r) <= len(self.e_prob)
         c_prob = np.multiply(self.c_prob[r], self.e_prob[:len(r)])
-        return np.random.rand(len(r)) < c_prob 
+        return np.random.rand(len(r)) < c_prob
 

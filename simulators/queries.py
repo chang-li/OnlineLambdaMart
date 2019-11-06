@@ -18,18 +18,79 @@
 
 import logging
 import numpy as np
+import numbers
 import scipy.sparse as sp
 
+try:
+    import cPickle as _pickle
+except ImportError:
+    import pickle as _pickle
+
 from itertools import chain
-
-from external_utils import pickle
-from external_utils import unpickle
-from external_utils import asindexarray
-
 from warnings import warn
 
 
 logger = logging.getLogger(__name__)
+
+
+def pickle(obj, filepath, protocol=-1):
+    '''
+    Pickle the object into the specified file.
+
+    Parameters:
+    -----------
+    obj: object
+        The object that should be serialized.
+
+    filepath:
+        The location of the resulting pickle file.
+    '''
+    with open(filepath, 'wb') as fout:
+        _pickle.dump(obj, fout, protocol=protocol)
+
+
+def unpickle(filepath):
+    '''
+    Unpicle the object serialized in the specified file.
+
+    Parameters:
+    -----------
+    filepath:
+        The location of the file to unpickle.
+    '''
+    with open(filepath, 'rb') as fin:
+        return _pickle.load(fin)
+
+def asindexarray(x):
+    '''
+    Helper method which converts the given parameter into a
+    list of indices.
+
+    Returns
+    -------
+    indices : array of ints
+        The index array created from `x`.
+    '''
+    if isinstance(x, (numbers.Integral, np.integer)):
+        return np.array([x], dtype='int32', order='C')
+
+    if isinstance(x, slice):
+        return np.arange(x.start, x.stop, x.step, dtype='int32')
+
+    if isinstance(x, np.ndarray):
+        if x.ndim != 1:
+            raise ValueError('index array has more than 1 dimension')
+
+        if x.dtype.kind == 'b':
+            return x.nonzero()[0].astype(dtype='int32', order='C')
+
+        return x.astype('int32', order='C', casting='same_kind')
+
+    # Assuming x is a list.
+    if isinstance(x[0], (numbers.Integral, np.integer)):
+        return np.array(x, dtype='int32', order='C')
+    else:
+        raise ValueError('input cannot be converted to an index array')
 
 
 class QueryDocumentInformationExtractor(object):
@@ -407,7 +468,7 @@ class Queries(object):
 
             logger.info('Reading queries from %s.' % filepath)
 
-            with open(filepath, 'rb') as ifile:
+            with open(filepath, 'r') as ifile:
                 # Loop through every line containing query-document pair.
                 for pair in ifile:
                     lineno += 1
@@ -667,9 +728,8 @@ class Queries(object):
         pickle(self, filepath)
 
         # ... and restore the attributes.
-        for attribute, value in removed_attributes.iteritems():
+        for attribute, value in removed_attributes.items():
             setattr(self, attribute, value)
-
 
     def __getitem__(self, index):
         '''
