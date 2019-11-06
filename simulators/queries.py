@@ -20,7 +20,7 @@ import logging
 import numpy as np
 import scipy.sparse as sp
 
-from itertools import chain, izip
+from itertools import chain
 
 from external_utils import pickle
 from external_utils import unpickle
@@ -370,7 +370,7 @@ class Queries(object):
         prev_qid = None
 
         # If only single filepath is given, not a list.
-        if isinstance(filepaths, basestring):
+        if isinstance(filepaths, str):
             filepaths = [filepaths]
 
         n_purged_queries = 0
@@ -475,7 +475,7 @@ class Queries(object):
                     except:
                         # Ill-formated line (it should not happen).
                         # Print line number
-                        print 'Ill-formated line: %d' % lineno
+                        print('Ill-formated line: %d' % lineno)
                         raise
 
                 # Need to check the last added query.
@@ -571,12 +571,12 @@ class Queries(object):
             feature_vectors = feature_vectors[document_shuffle_indices]
 
         with open(filepath, 'w') as ofile:
-            for score, qid, feature_vector in izip(relevance_scores,
+            for score, qid, feature_vector in zip(relevance_scores,
                                                    query_ids,
                                                    feature_vectors):
                 ofile.write('%d' % score)
                 ofile.write(' qid:%d' % qid)
-                for feature in izip(self.feature_indices, feature_vector):
+                for feature in zip(self.feature_indices, feature_vector):
                     output = ' %d:%.12f' % feature
                     ofile.write(output.rstrip('0').rstrip('.'))
                 ofile.write('\n')
