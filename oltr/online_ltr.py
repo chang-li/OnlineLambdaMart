@@ -1,16 +1,17 @@
 import numpy as np
-import re
 import scipy.sparse as sp
 
 
 # TODO(mzoghi): Remove these and import the click model
 Rel_To_Prob = {
     "perfect": {'c_prob': np.asarray([.0, .2, .4, .8, 1.]),
-                's_prob': np.ones(5)},
+                's_prob': np.zeros(5)},
     "informational": {'c_prob': np.asarray([.4, .6, .7, .8, .9]),
                       's_prob': np.asarray([.1, .2, .3, .4, .5])},
     "navigational": {'c_prob': np.asarray([.05, .3, .5, .7, .95]),
-                     's_prob': np.asarray([.2, .3, .5, .7, .9])}
+                     's_prob': np.asarray([.2, .3, .5, .7, .9])},
+    "pure_cascade": {'c_prob': np.asarray([.05, .3, .5, .7, .95]),
+                     's_prob': np.ones(5)},
 }
 
 
@@ -28,7 +29,7 @@ class AbstractClickSimulator(object):
         return self.name
 
 
-class CascadeModel(AbstractClickSimulator):
+class DependentClickModel(AbstractClickSimulator):
     """
     CascadeModel
     """
@@ -224,30 +225,40 @@ class OnlineLTR(object):
     def __init__(self, data_path='../data/mslr_fold1_test_sample.txt'):
         self.qset = OnlineLTR.load_from_text(data_path)
 
-    def to_df(self):
-        """Convert self.qset to dataframes that could be used to train a LightGbM model.
-
-        Returns:
-            A tule of dataframes that could be fed into the sklearn API of LightGBM.
-        """
-
-    def extract_labels_and_scores(self, ranker):
-        """Apply a ranker to the data and get the scores and labels.
+    def get_labels_and_scores(self, ranker, num_queries):
+        """Apply a ranker to a subsample of the data and get the scores and labels.
 
         Args:
             ranker: A LightGBM model.
+            num_queries: Number of queries to be sampled from self.qset
 
         Returns:
             A pair of numpy arrays that assign labels and scores to the documents of each query.
         """
+        query_ids = np.random.choice(self.qset.keys(), num_queries)
+        labels = # Get the labels from self.qset
+        if ranker is None:
+            # TODO: Assign random scores
+        # TBC
 
-    def apply_click_model_to_labels_and_scores(self, click_model, ranker, num_queries):
+    def apply_click_model_to_labels_and_scores(self, click_model, labels, scores):
         """This method samples some queries and generates clicks for them based on a click model"""
 
-    def generate_training_data_from_clicks(self):
+    def generate_training_data_from_clicks(self, clicks):
         """This method uses the clicks geenrated by apply_click_model_to_labels_and_scores to
         create a training dataset."""
 
-    def update_ranker(self):
+    def update_ranker(self, training_data):
         """"This method uses the training data from generate_training_data_from_clicks to
         improve the ranker."""
+
+def oltr_loop(data_path, num_iterations=10, num_queries=5):
+    learner = OnlineLTR(data_path)
+    ranker = None
+    click_model = DependentClickModel(user_type='pure_cascade')
+    for ind in range(num_iterations):
+        labels, score = learner.get_labels_and_scores(ranker, num_queries)
+        clicks = learner.apply_click_model_to_labels_and_scores(click_model, labels, scores)
+        training_data = learner.generate_training_data_from_clicks(clicks)
+        ranker = learner.update_ranker(training_data)
+
