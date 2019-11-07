@@ -6,7 +6,9 @@ Rel_To_Prob = {
     "informational": {'c_prob': np.asarray([.4, .6, .7, .8, .9]),
                       's_prob': np.asarray([.1, .2, .3, .4, .5])},
     "navigational": {'c_prob': np.asarray([.05, .3, .5, .7, .95]),
-                     's_prob': np.asarray([.2, .3, .5, .7, .9])}
+                     's_prob': np.asarray([.2, .3, .5, .7, .9])},
+    "pure_cascade": {'c_prob': np.asarray([.05, .3, .5, .7, .95]),
+                     's_prob': np.ones(5)},
 }
 
 

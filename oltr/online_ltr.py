@@ -2,56 +2,8 @@ import numpy as np
 import scipy.sparse as sp
 import lightgbm as gbm
 
-# TODO(mzoghi): Remove these and import the click model
-Rel_To_Prob = {
-    "perfect": {'c_prob': np.asarray([.0, .2, .4, .8, 1.]),
-                's_prob': np.zeros(5)},
-    "informational": {'c_prob': np.asarray([.4, .6, .7, .8, .9]),
-                      's_prob': np.asarray([.1, .2, .3, .4, .5])},
-    "navigational": {'c_prob': np.asarray([.05, .3, .5, .7, .95]),
-                     's_prob': np.asarray([.2, .3, .5, .7, .9])},
-    "pure_cascade": {'c_prob': np.asarray([.05, .3, .5, .7, .95]),
-                     's_prob': np.ones(5)},
-}
-
-
-class AbstractClickSimulator(object):
-    """
-    Based class for all simulator
-    """
-    def __init__(self, user_type):
-        self.name = 'abstract Model'
-
-    def get_click(self, r):
-        raise NotImplemented
-
-    def __str__(self):
-        return self.name
-
-
-class DependentClickModel(AbstractClickSimulator):
-    """
-    DependentClickModel
-    """
-    def __init__(self, user_type='perfect'):
-        super(DependentClickModel, self).__init__(user_type)
-        self.name = user_type
-        self.c_prob = Rel_To_Prob[user_type]['c_prob']
-        self.s_prob = Rel_To_Prob[user_type]['s_prob']
-
-    def get_click(self, r):
-        pos = len(r)
-        c_prob = self.c_prob[r]
-        s_prob = self.s_prob[r]
-        c_coin = np.random.rand(pos) < c_prob
-        s_coin = np.random.rand(pos) < s_prob
-        f_coin = np.multiply(c_coin, s_coin)
-        if np.sum(f_coin) == 0:
-            last_pos = pos
-        else:
-            last_pos = np.where(f_coin)[0][0]
-        c_coin[last_pos+1:] = False
-        return c_coin
+from simulators.click_simulator import DependentClickModel
+# Todo (Chang): re-name the folders.
 
 
 class OnlineLTR(object):
@@ -219,9 +171,10 @@ class OnlineLTR(object):
         return qset
 
     def __init__(self, data_path='../data/mslr_fold1_test_sample.txt', seed=42):
-        self.qset = OnlineLTR.load_from_text(data_path)
         self.seed = seed
         np.random.seed(seed)
+
+        self.qset = OnlineLTR.load_from_text(data_path)
 
     def get_labels_and_rankings(self, ranker, num_queries):
         """Apply a ranker to a subsample of the data and get the labels and rankings.
@@ -234,8 +187,8 @@ class OnlineLTR(object):
             A pair of lists that assign labels and rankings to the documents of each query, and the indices of each query.
         """
         query_ids = np.random.choice(list(self.qset), num_queries)
-        per_query_n_docs = [self.qset[qid]['label'].shape[0] for qid in query_ids]
-        indices = [0] + np.cumsum(per_query_n_docs)
+        n_docs_per_query = [self.qset[qid]['label'].shape[0] for qid in query_ids]
+        indices = [0] + np.cumsum(n_docs_per_query).tolist()
         # MZ: @Chang, I don't understand what these indices are or why we need them.
         labels = [self.qset[qid]['label'] for qid in query_ids]
 
@@ -244,9 +197,11 @@ class OnlineLTR(object):
         if ranker is None:
             rankings = [np.random.permutation(label.shape[0]) for label in labels]
         else:
-            features = sp.vstack([self.qset[qid] for qid in query_ids])
+            features = np.concatenate([self.qset[qid]['feature'] for qid in query_ids])
             # Cf. https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.LGBMRanker.html#lightgbm.LGBMRanker.predict
-            rankings = ranker.predict(features)
+            scores = ranker.predict(features)
+            tie_breakers = np.random.rand(scores.shape[0])
+            rankings = [np.lexsort((tie_breakers[indices[i]:indices[i+1]], -scores[indices[i]:indices[i+1]]))for i in range(num_queries)]
 
         return query_ids, indices, labels, rankings
 
@@ -290,10 +245,14 @@ class OnlineLTR(object):
 
         train_features = [self.qset[query_ids[i]]['feature'][rankings[i]][:last_pos[i]]
                           for i in range(len(query_ids))]
+
+
         # Cf. the following for an example:
         # https://mlexplained.com/2019/05/27/learning-to-rank-explained-with-code/
-        train_qid_list = [qid for qid in query_ids for _ in range(self.qset[qid]['feature'].shape[0])]
+        train_qid_list = [feature.shape[0] for feature in train_features]
 
+        train_features = np.concatenate(train_features)
+        train_labels = np.concatenate(train_labels)
         return (train_features, train_labels, train_qid_list)
 
     def update_ranker(self, training_data, ranker_params, fit_params):
@@ -302,6 +261,7 @@ class OnlineLTR(object):
         train_features, train_labels, train_qid_list = training_data
         ranker = gbm.LGBMRanker(**ranker_params)
         ranker.fit(X=train_features, y=train_labels, group=train_qid_list)
+        return ranker
 
 
 
@@ -309,21 +269,23 @@ class OnlineLTR(object):
 def oltr_loop(data_path, num_iterations=10, num_queries=5):
     learner = OnlineLTR(data_path)
     ranker_params = {
-        'min_child_samples' : 50,
-        'min_child_weight' : 0,
-        'n_estimators' : 500,
-        'learning_rate' : 0.02,
-        'num_leaves' : 400,
-        'boosting_type' : 'gbdt',
-        'objective' : 'lambdarank',
+        'min_child_samples': 50,
+        'min_child_weight': 0,
+        'n_estimators': 500,
+        'learning_rate': 0.02,
+        'num_leaves': 400,
+        'boosting_type': 'gbdt',
+        'objective': 'lambdarank',
     }
     fit_params = {
-        'early_stopping_rounds' : 50,
-        'eval_metric' : 'ndcg',
-        'eval_at' : 5,
-        'verbose' : 5,
+        'early_stopping_rounds': 50,
+        'eval_metric': 'ndcg',
+        'eval_at': 5,
+        'verbose': 5,
     }
     click_model = DependentClickModel(user_type='pure_cascade')
+
+    ranker = None
     for ind in range(num_iterations):
         query_ids, indices, labels, rankings = learner.get_labels_and_rankings(ranker, num_queries)
         clicks = learner.apply_click_model_to_labels_and_scores(click_model, labels, rankings)
