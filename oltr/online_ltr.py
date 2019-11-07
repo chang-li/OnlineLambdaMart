@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.sparse as sp
+import lightgbm as gbm
 
 # TODO(mzoghi): Remove these and import the click model
 Rel_To_Prob = {
@@ -235,13 +236,17 @@ class OnlineLTR(object):
         query_ids = np.random.choice(list(self.qset), num_queries)
         per_query_n_docs = [self.qset[qid]['label'].shape[0] for qid in query_ids]
         indices = [0] + np.cumsum(per_query_n_docs)
+        # MZ: @Chang, I don't understand what these indices are or why we need them.
         labels = [self.qset[qid]['label'] for qid in query_ids]
 
         total_docs = sum([len(label) for label in labels])
         # Get the labels from self.qset
         if ranker is None:
             rankings = [np.random.permutation(label.shape[0]) for label in labels]
-        # TBC
+        else:
+            features = sp.vstack([self.qset[qid] for qid in query_ids])
+            # Cf. https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.LGBMRanker.html#lightgbm.LGBMRanker.predict
+            rankings = ranker.predict(features)
 
         return query_ids, indices, labels, rankings
 
@@ -283,25 +288,47 @@ class OnlineLTR(object):
                 last_pos.append(np.where(click)[0][-1]+1)
             train_labels.append(click[:last_pos[-1]])
 
-        train_features = [self.qset[query_ids[i]]['feature'][rankings[i]][:last_pos[i]] for i in range(len(query_ids))]
+        train_features = [self.qset[query_ids[i]]['feature'][rankings[i]][:last_pos[i]]
+                          for i in range(len(query_ids))]
+        # Cf. the following for an example:
+        # https://mlexplained.com/2019/05/27/learning-to-rank-explained-with-code/
+        train_qid_list = [qid for qid in query_ids for _ in range(self.qset[qid]['feature'].shape[0])]
 
-        return (train_features, train_labels)
+        return (train_features, train_labels, train_qid_list)
 
-    def update_ranker(self, training_data):
+    def update_ranker(self, training_data, ranker_params, fit_params):
         """"This method uses the training data from generate_training_data_from_clicks to
         improve the ranker."""
-        train_features, train_labels = training_data
+        train_features, train_labels, train_qid_list = training_data
+        ranker = gbm.LGBMRanker(**ranker_params)
+        ranker.fit(X=train_features, y=train_labels, group=train_qid_list)
+
+
 
 
 def oltr_loop(data_path, num_iterations=10, num_queries=5):
     learner = OnlineLTR(data_path)
-    ranker = None
+    ranker_params = {
+        'min_child_samples' : 50,
+        'min_child_weight' : 0,
+        'n_estimators' : 500,
+        'learning_rate' : 0.02,
+        'num_leaves' : 400,
+        'boosting_type' : 'gbdt',
+        'objective' : 'lambdarank',
+    }
+    fit_params = {
+        'early_stopping_rounds' : 50,
+        'eval_metric' : 'ndcg',
+        'eval_at' : 5,
+        'verbose' : 5,
+    }
     click_model = DependentClickModel(user_type='pure_cascade')
     for ind in range(num_iterations):
         query_ids, indices, labels, rankings = learner.get_labels_and_rankings(ranker, num_queries)
         clicks = learner.apply_click_model_to_labels_and_scores(click_model, labels, rankings)
         training_data = learner.generate_training_data_from_clicks(query_ids, clicks, rankings)
-        ranker = learner.update_ranker(training_data)
+        ranker = learner.update_ranker(training_data, ranker_params, fit_params)
 
         print('iteration: ', ind)
         print('number of clicks', sum([sum(ck) for ck in clicks]))
