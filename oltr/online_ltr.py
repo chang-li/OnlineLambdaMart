@@ -6,10 +6,13 @@ from oltr.utils.metric import ndcg_at_k
 from oltr.utils.click_simulator import DependentClickModel
 from oltr.utils.queries import Queries, find_constant_features
 
+TRAIN_PATH = os.path.expanduser('~/data/web30k/Fold1/train.txt')
+VALID_PATH = os.path.expanduser('~/data/web30k/Fold1/vali.txt')
+TEST_PATH = os.path.expanduser('~/data/web30k/Fold1/test.txt')
 
 class OnlineLTR(object):
 
-  def __init__(self, data_path='../data/mslr_fold1_test_sample.txt', seed=42):
+  def __init__(self, data_path, seed=42):
 
     self.seed = seed
     np.random.seed(seed)
@@ -116,6 +119,10 @@ class OnlineLTR(object):
       train_indices = [ind for otd in self.observed_training_data 
                        for ind in otd[0]]
       train_features = np.concatenate([self.qset.feature_vectors[ind]
+      # MZ: @Chang, could you check to make sure this is correct? I'm assuming
+      #     that ind is the index of the query and so I would've assumed that 
+      #     it should be something like self.qset[ind].feature_vectors 
+      #     but I'm not 100% sure.
                                        for ind in train_indices])
       train_labels = np.concatenate([otd[1]
                                      for otd in self.observed_training_data])
@@ -149,6 +156,25 @@ class OnlineLTR(object):
     return np.mean(ndcgs)
 
 
+class OfflineLTR(object):
+
+  def __init__(self, train_path, valid_path, test_path, 
+               ranker_params, fit_params):
+    self.train_qset = Queries.load_from_text(train_path)
+    self.valid_qset = Queries.load_from_text(valid_path)
+    self.test_qset = Queries.load_from_text(test_path)
+    self.ranker_params = ranker_params
+    self.fit_params = fit_params
+
+  def train_and_eval(self):
+    ranker = gbm.LGBMRanker(**self.ranker_params)
+    train_features = self.train_qset.feature_vectors
+    valid_features = self.valid_qset.feature_vectors
+    test_features = self.test_qset.feature_vectors
+    train_labels = ...
+    ranker.fit(X=train_features, y=train_labels)
+
+
 def oltr_loop(data_path, num_iterations=20, num_queries=5):
   learner = OnlineLTR(data_path)
   ranker_params = {
@@ -174,11 +200,11 @@ def oltr_loop(data_path, num_iterations=20, num_queries=5):
 
   ranker = None
   for ind in range(num_iterations):
-    query_ids, labels, rankings = learner.get_labels_and_rankings(ranker, 
+    query_ids, labels, rankings = learner.get_labels_and_rankings(ranker,
                                                                   num_queries)
     clicks = learner.apply_click_model_to_labels_and_scores(click_model, labels,
                                                             rankings)
-    training_data = learner.generate_training_data_from_clicks(query_ids, 
+    training_data = learner.generate_training_data_from_clicks(query_ids,
                                                                clicks, rankings)
     ranker = learner.update_ranker(training_data, ranker_params, fit_params)
     eval_value = learner.evalualte_ranker(ranker, eval_params)
@@ -189,5 +215,5 @@ def oltr_loop(data_path, num_iterations=20, num_queries=5):
 
 if __name__ == '__main__':
   start = timeit.default_timer()
-  oltr_loop('data/mslr_fold1_test_sample.txt')
+  oltr_loop('data/mslr_fold1_train_sample.txt')
   print('running time: ', timeit.default_timer() - start)
