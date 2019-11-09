@@ -923,7 +923,6 @@ class Queries(object):
             self.feature_vectors -= min_feature_values
             self.feature_vectors /= scale_feature_values
 
-
     def get_query(self, qid):
         '''
         Return the query with the given id.
@@ -945,13 +944,11 @@ class Queries(object):
         else:
             return self.query_indptr[i + 1] - self.query_indptr[i]
 
-
     def get_feature_vectors(self, i):
         '''
         Return the feature vectors of the documents for the specified query.
         '''
         return self.feature_vectors[self.query_indptr[i]:self.query_indptr[i + 1]]
-
 
     def query_count(self):
         '''
@@ -959,13 +956,11 @@ class Queries(object):
         '''
         return self.n_queries
 
-
     def max_relevance_score(self):
         '''
         Return the maximum relevance score of a document.
         '''
         return self.max_score
-
 
     def max_document_count(self):
         '''
