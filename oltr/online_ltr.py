@@ -1,6 +1,8 @@
 import numpy as np
 import lightgbm as gbm
+import os
 import timeit
+from collections import defaultdict
 
 from oltr.utils.metric import ndcg_at_k
 from oltr.utils.click_simulator import DependentClickModel
@@ -76,7 +78,6 @@ class OnlineLTR(object):
 
     Args:
       query_ids: the sampled query ids
-      indices: indices of each query
       clicks: clicks from the click model
 
     Returns:
@@ -110,53 +111,83 @@ class OnlineLTR(object):
 
     self.observed_training_data.append((train_indices, train_labels,
                                         train_qid_list))
-    return (train_features, train_labels, train_qid_list)
 
-  def update_ranker(self, training_data, ranker_params, fit_params):
+  def update_oltr_ranker(self, ranker_params, fit_params):
     """"This method uses the training data from 
     generate_training_data_from_clicks to improve the ranker."""
     if self.observed_training_data:
       train_indices = [ind for otd in self.observed_training_data 
                        for ind in otd[0]]
       train_features = np.concatenate([self.qset.feature_vectors[ind]
-      # MZ: @Chang, could you check to make sure this is correct? I'm assuming
-      #     that ind is the index of the query and so I would've assumed that 
-      #     it should be something like self.qset[ind].feature_vectors 
-      #     but I'm not 100% sure.
                                        for ind in train_indices])
       train_labels = np.concatenate([otd[1]
                                      for otd in self.observed_training_data])
       train_qid_list = np.concatenate([otd[2]
                                        for otd in self.observed_training_data])
     else:
-      train_features, train_labels, train_qid_list = training_data
+      raise ValueError('OnlineLTR.generate_training_data_from_clicks()'
+        'should be called before OnlineLTR.update_oltr_ranker().')
 
     ranker = gbm.LGBMRanker(**ranker_params)
     ranker.fit(X=train_features, y=train_labels, group=train_qid_list, 
                **fit_params)
     return ranker
 
-  def evalualte_ranker(self, ranker, eval_params):
+  def evaluate_ranker(self, ranker, eval_params, query_ids=None):
     """ Evaluate the ranker based on the queries in self.qset
     :param ranker:
     :param eval_params:  ndcg, cutoff
     :return:
     """
-    scores = ranker.predict(self.qset.feature_vectors)
+    if query_ids is None:
+      eval_qset = self.qset
+    else:
+      eval_qset = self.qset[query_ids]
+    scores = ranker.predict(eval_qset.feature_vectors)
     tie_breakers = np.random.rand(scores.shape[0])
 
-    indices = self.qset.query_indptr
+    indices = eval_qset.query_indptr
     rankings = [np.lexsort((tie_breakers[indices[i]:indices[i + 1]],
                 -scores[indices[i]:indices[i + 1]]))
-                for i in range(self.qset.n_queries)]
+                for i in range(eval_qset.n_queries)]
+    # raise ValueError
     ndcgs = [eval_params['metric'](
-                self.qset[qid].relevance_scores[rankings[qid]], 
+                eval_qset[qid].relevance_scores[rankings[qid]], 
                 eval_params['cutoff'])
-             for qid in range(self.qset.n_queries)]
+             for qid in range(eval_qset.n_queries)]
     return np.mean(ndcgs)
 
 
-class OfflineLTR(object):
+class BaseRanker(object):
+  def fit(self):
+    raise NotImplementedError
+
+  def predict(self):
+    raise NotImplementedError
+
+
+class LinRanker(BaseRanker):
+  def __init__(self, weights=None, num_features=136):
+    if not weights:
+      self.weights = np.mat(np.ones([num_features, 1]))
+    else:
+      self.weights = np.mat(weights).flatten().T
+
+  def predict(self, X):
+    """Get the score of each item.
+
+    Args:
+      X: A 2d array of size [num_items, num_features] encoding the features of
+        each item.
+
+    Returns:
+      A vector of length num_items.
+    """
+    scores = (np.mat(X) * self.weights).A.flatten()
+    return scores
+
+
+class LMARTRanker(BaseRanker):
 
   def __init__(self, train_path, valid_path, test_path, 
                ranker_params, fit_params):
@@ -177,7 +208,7 @@ class OfflineLTR(object):
 
 def oltr_loop(data_path, num_iterations=20, num_queries=5):
   learner = OnlineLTR(data_path)
-  ranker_params = {
+  oltr_ranker_params = {
     'min_child_samples': 50,
     'min_child_weight': 0,
     'n_estimators': 500,
@@ -186,7 +217,7 @@ def oltr_loop(data_path, num_iterations=20, num_queries=5):
     'boosting_type': 'gbdt',
     'objective': 'lambdarank'
   }
-  fit_params = {
+  oltr_fit_params = {
     # 'early_stopping_rounds': 50,
     'eval_metric': 'ndcg',
     'eval_at': 5,
@@ -198,19 +229,33 @@ def oltr_loop(data_path, num_iterations=20, num_queries=5):
   }
   click_model = DependentClickModel(user_type='pure_cascade')
 
-  ranker = None
+  oltr_ranker = None
+  offline_rankers = {
+    'Linear' : LinRanker(num_features=136),
+    # 'Offline LambdaMART' : LMARTRanker(train_path, valid_path, test_path,
+    #                                    lmart_ranker_params, lmart_fit_params),
+  }
+  eval_results = defaultdict(list)
   for ind in range(num_iterations):
-    query_ids, labels, rankings = learner.get_labels_and_rankings(ranker,
+    query_ids, labels, rankings = learner.get_labels_and_rankings(oltr_ranker,
                                                                   num_queries)
     clicks = learner.apply_click_model_to_labels_and_scores(click_model, labels,
                                                             rankings)
-    training_data = learner.generate_training_data_from_clicks(query_ids,
-                                                               clicks, rankings)
-    ranker = learner.update_ranker(training_data, ranker_params, fit_params)
-    eval_value = learner.evalualte_ranker(ranker, eval_params)
+    learner.generate_training_data_from_clicks(query_ids, clicks, rankings)
+    oltr_ranker = learner.update_oltr_ranker(oltr_ranker_params,
+                                             oltr_fit_params)
+    oltr_eval_value = learner.evaluate_ranker(oltr_ranker, eval_params, query_ids)
+    eval_results['OLTR'].append(oltr_eval_value)
+    for offline_model_name, ranker in offline_rankers.items():
+      eval_result = learner.evaluate_ranker(ranker, eval_params, query_ids)
+      eval_results[offline_model_name].append(eval_result)
+
 
     print('>>>>>>>>>>iteration: ', ind)
-    print('evaluation value: ', eval_value)
+    # print('Offline LambdaMART (headroom) performance : ', 
+    #       eval_results['Offline LambdaMART'][-1])
+    print('Online LTR performance: ', oltr_eval_value)
+    print('Linear ranker (baseline) performance: ', eval_results['Linear'][-1])
 
 
 if __name__ == '__main__':
