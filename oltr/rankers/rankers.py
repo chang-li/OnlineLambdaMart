@@ -35,11 +35,11 @@ class LinRanker(BaseRanker):
 
 class LMARTRanker(BaseRanker):
 
-  def __init__(self, train_path, valid_path, test_path,
+  def __init__(self, train_qset, valid_qset, test_qset,
                ranker_params, fit_params):
-    self.train_qset = Queries.load_from_text(train_path)
-    self.valid_qset = Queries.load_from_text(valid_path)
-    self.test_qset = Queries.load_from_text(test_path)
+    self.train_qset = train_qset
+    self.valid_qset = valid_qset
+    self.test_qset = test_qset
     self.ranker_params = ranker_params
     self.fit_params = fit_params
     self.ranker = gbm.LGBMRanker(**self.ranker_params)

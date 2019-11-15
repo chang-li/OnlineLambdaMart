@@ -8,9 +8,10 @@ def dcg(y, pos, measure=1):
     :param measure: 1: 2^rel - 1; 2: rel
     :return: dcg at pos
     """
-    dcg_weights = np.asarray([np.log(2)/np.log(idx+2) for idx in range(pos)])
+    pos_ = min(pos, len(y))
+    dcg_weights = np.asarray([np.log(2)/np.log(idx+2) for idx in range(pos_)])
     y_ = np.power(2, y) - 1 if measure == 1 else y
-    return np.dot(dcg_weights, y_[:pos])
+    return np.dot(dcg_weights, y_[:pos_])
 
 
 def ndcg_at_k(y, k, group=None, measure=1):

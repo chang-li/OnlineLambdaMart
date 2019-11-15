@@ -20,6 +20,7 @@ import logging
 import numpy as np
 import numbers
 import scipy.sparse as sp
+import time
 
 try:
     import cPickle as _pickle
@@ -463,6 +464,7 @@ class Queries(object):
             else:
                 return 0
 
+        start_time = time.time()
         for filepath in filepaths:
             lineno = 0  # Used just to report invalid lines (if any).
 
@@ -472,6 +474,8 @@ class Queries(object):
                 # Loop through every line containing query-document pair.
                 for pair in ifile:
                     lineno += 1
+                    if lineno % 10000 == 0:
+                        print(int(time.time()-start_time), 'sec Line', lineno)
                     try:
                         comment_start = pair.find('#')
 
