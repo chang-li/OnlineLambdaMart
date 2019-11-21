@@ -336,32 +336,33 @@ class Queries(object):
             self.feature_vectors = self.feature_vectors[relevance_scores_sorted_indices, :]
             self.relevance_scores = self.relevance_scores[relevance_scores_sorted_indices]
 
-        # Store for each query where in its document list
-        # the relevance scores changes.
-        self.query_relevance_strides = np.empty((self.n_queries,
-                                                 self.max_score + 1),
-                                                dtype=np.intc)
-        self.query_relevance_strides.fill(-1)
-
-        # Compute relevance score strides for each query (the scores need to
-        # be sorted first), i.e. query_relevance_strides[i,j] denotes
-        # the smallest index of a document that is less relevant
-        # than the relevance score j in the document list of the i-th query.
-        for i in range(self.n_queries):
-            query_relevance_scores = self.relevance_scores[self.query_indptr[i]:self.query_indptr[i + 1]]
-            query_relevance_starts = np.where(np.diff(query_relevance_scores))[0]
-            # Special cases: all documents have the same relevance
-            # or there is no irrelevant document.
-            if query_relevance_starts.size == 0 or query_relevance_scores[-1] > 0:
-                query_relevance_starts = np.append(query_relevance_starts,
-                                                   query_relevance_scores.size - 1)
-
-            query_relevance_starts += self.query_indptr[i]
-
-            self.query_relevance_strides[i, self.relevance_scores[query_relevance_starts]] = query_relevance_starts + 1
-
-        # Just to make use of the space (which might be found useful later).
-        self.query_relevance_strides[:, 0] = self.query_indptr[1:]
+        # Changed by Chang:  we don't need query_relevance_strides
+        # # Store for each query where in its document list
+        # # the relevance scores changes.
+        # self.query_relevance_strides = np.empty((self.n_queries,
+        #                                          self.max_score + 1),
+        #                                         dtype=np.intc)
+        # self.query_relevance_strides.fill(-1)
+        #
+        # # Compute relevance score strides for each query (the scores need to
+        # # be sorted first), i.e. query_relevance_strides[i,j] denotes
+        # # the smallest index of a document that is less relevant
+        # # than the relevance score j in the document list of the i-th query.
+        # for i in range(self.n_queries):
+        #     query_relevance_scores = self.relevance_scores[self.query_indptr[i]:self.query_indptr[i + 1]]
+        #     query_relevance_starts = np.where(np.diff(query_relevance_scores))[0]
+        #     # Special cases: all documents have the same relevance
+        #     # or there is no irrelevant document.
+        #     if query_relevance_starts.size == 0 or query_relevance_scores[-1] > 0:
+        #         query_relevance_starts = np.append(query_relevance_starts,
+        #                                            query_relevance_scores.size - 1)
+        #
+        #     query_relevance_starts += self.query_indptr[i]
+        #
+        #     self.query_relevance_strides[i, self.relevance_scores[query_relevance_starts]] = query_relevance_starts + 1
+        #
+        # # Just to make use of the space (which might be found useful later).
+        # self.query_relevance_strides[:, 0] = self.query_indptr[1:]
 
         self.qdie = QueryDocumentInformationExtractor(self)
 
@@ -377,7 +378,7 @@ class Queries(object):
     @staticmethod
     def load_from_text(filepaths, dtype=np.float32, max_score=None,
                        min_feature=None, max_feature=None,
-                       has_sorted_relevances=False, purge=False):
+                       has_sorted_relevances=True, purge=False):
         '''
         Load queries in the svmlight format from the specified file(s).
 
@@ -676,18 +677,22 @@ class Queries(object):
         # Convert (if needed) feature vectors into wanted order.
         if mmap is None:
             queries.feature_vectors = np.asanyarray(queries.feature_vectors, order=order)
-        # Recover the query indices pointer array from the relevance strides array.
-        setattr(queries, 'query_indptr', np.empty(queries.query_relevance_strides.shape[0] + 1, dtype=np.intc))
-        queries.query_indptr[0] = 0
-        queries.query_indptr[1:] = queries.query_relevance_strides[:, 0]
-        # Recover the relevance scores from the relevance strides array.
-        setattr(queries, 'relevance_scores', np.empty(queries.feature_vectors.shape[0], dtype=np.intc))
-        iQD = 0
-        for iQ in range(queries.n_queries):
-            for score in range(queries.max_score, -1, -1):
-                while iQD < queries.query_relevance_strides[iQ, score]:
-                    queries.relevance_scores[iQD] = score
-                    iQD += 1
+
+        # Changed by Chang: we don't need query_relevance_strides
+        # # Recover the query indices pointer array from the relevance strides array.
+        # setattr(queries, 'query_indptr', np.empty(queries.query_relevance_strides.shape[0] + 1, dtype=np.intc))
+        # queries.query_indptr[0] = 0
+        # queries.query_indptr[1:] = queries.query_relevance_strides[:, 0]
+        # # Recover the relevance scores from the relevance strides array.
+        # #
+        # # setattr(queries, 'relevance_scores', np.empty(queries.feature_vectors.shape[0], dtype=np.intc))
+        # iQD = 0
+        # for iQ in range(queries.n_queries):
+        #     for score in range(queries.max_score, -1, -1):
+        #         while iQD < queries.query_relevance_strides[iQ, score]:
+        #             queries.relevance_scores[iQD] = score
+        #             iQD += 1
+
         if not hasattr(queries, 'qdie'):
             queries.qdie = QueryDocumentInformationExtractor(queries)
         logger.info('Loaded %d queries with %d documents in total.' % (queries.query_count(), queries.document_count()))
@@ -713,7 +718,9 @@ class Queries(object):
         '''
         # The name of the attributes that will be removed
         # from the object before pickling.
-        removed_attribute_names = ['query_indptr', 'relevance_scores']
+        # Changed by Chang: store everything.
+        # removed_attribute_names = ['query_indptr', 'relevance_scores']
+        removed_attribute_names = []
 
         # Save feature vectors separately to allow memory mapping.
         if separate:
@@ -840,12 +847,13 @@ class Queries(object):
             self.query_ids = self.query_ids[good_query_mask]
             self.n_queries = len(self.query_indptr) - 1
             self.n_feature_vectors = self.query_indptr[-1]
-            self.query_relevance_strides = ((self.query_relevance_strides -
-                                             query_document_counts.cumsum(dtype=np.intc).reshape(-1, 1))[good_query_mask] +
-                                            good_query_document_counts.cumsum(dtype=np.intc).reshape(-1, 1))
-
-            # Not needed, but keeps things nice and clean.
-            self.query_relevance_strides[np.where(self.query_relevance_strides < 0)] = -1
+            # Changed by Change. Make sure the loaded documents can be not ordered.
+            # self.query_relevance_strides = ((self.query_relevance_strides -
+            #                                  query_document_counts.cumsum(dtype=np.intc).reshape(-1, 1))[good_query_mask] +
+            #                                 good_query_document_counts.cumsum(dtype=np.intc).reshape(-1, 1))
+            #
+            # # Not needed, but keeps things nice and clean.
+            # self.query_relevance_strides[np.where(self.query_relevance_strides < 0)] = -1
 
         if remove_features is not None:
             # Convert to Numpy array with automatic type conversion.
