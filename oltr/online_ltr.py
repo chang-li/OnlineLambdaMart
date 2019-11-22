@@ -9,7 +9,7 @@ from collections import defaultdict
 from oltr.utils.metric import ndcg_at_k
 from oltr.utils.click_simulator import DependentClickModel
 from oltr.utils.queries import Queries, find_constant_features
-from oltr.rankers.rankers import LinRanker, LMARTRanker
+from oltr.rankers import LinRanker, LMARTRanker, ClickLMARTRanker
 
 TRAIN_PATH = os.path.expanduser('~/data/web30k/Fold1/train.txt')
 VALID_PATH = os.path.expanduser('~/data/web30k/Fold1/vali.txt')
@@ -118,9 +118,6 @@ class OnlineLTR(object):
     train_indices = [self.train_qset.query_indptr[qid] + rankings[i][:last_pos[i]]
                      for i, qid in enumerate(query_ids)]
     train_features = [self.train_qset.feature_vectors[idx] for idx in train_indices]
-    # train_features = [
-    # self.train_qset[query_ids[i]].feature_vectors[rankings[i]][:last_pos[i]]
-    #                  for i in range(len(query_ids))]
 
     # Cf. the following for an example:
     # https://mlexplained.com/2019/05/27/learning-to-rank-explained-with-code/
@@ -152,7 +149,7 @@ class OnlineLTR(object):
     if 'early_stopping_rounds' in fit_params:
       num_queries = len(self.observed_training_data[-1][0])
       valid_query_ids = self.sample_query_ids(num_queries, data='valid')
-      valid_labels = np.concatenate([self.valid_qset[qid].relevance_scores 
+      valid_labels = np.concatenate([self.valid_qset[qid].relevance_scores
                                      for qid in valid_query_ids])
       valid_features = self.valid_qset[valid_query_ids].feature_vectors
       valid_q_list_sizes = [self.valid_qset[qid].document_count() for qid in valid_query_ids]
@@ -425,7 +422,7 @@ if __name__ == '__main__':
     num_test_queries = int(sys.argv[3])
   start = timeit.default_timer()
   eval_results = oltr_loop(oltr_data_path, num_iterations, num_train_queries, num_test_queries)
-  plot_eval_results(eval_results, 
-    out_path='/tmp/oltr_performance_%s_%s_%s.png' 
+  plot_eval_results(eval_results,
+    out_path='/tmp/oltr_performance_%s_%s_%s.png'
     % (num_iterations, num_train_queries, num_test_queries))
   print('running time: ', timeit.default_timer() - start)
