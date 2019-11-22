@@ -6,13 +6,17 @@ import lightgbm as gbm
 class ClickLMARTRanker(BaseRanker):
 
   def __init__(self, train_qset, valid_qset, test_qset,
-               ranker_params, fit_params, total_number_of_clicked_queries=10000):
+               ranker_params, fit_params, num_queries, click_model,
+               total_number_of_clicked_queries=10000):
+    self.fit_params = fit_params
+    self.click_model = click_model
     self.offline_train_qset = train_qset
     self.offline_valid_qset = valid_qset
     self.offline_test_qset = test_qset
     self.ranker_params = ranker_params
     self.fit_params = fit_params
     self.offline_ranker = gbm.LGBMRanker(**self.ranker_params)
+    self.click_ranker = gbm.LGBMRanker(**self.ranker_params)
     self.offline_fit()
     self.num_training_queries = {
         'train': int(.6 * total_number_of_clicked_queries),
@@ -54,11 +58,10 @@ class ClickLMARTRanker(BaseRanker):
       features[data] = self.qset.feature_vectors[indices]
       labels[data] = self.click_training_data[data][1]
       q_list_sizes = self.click_training_data[data][2]
-    self.click_ranker[data] = gbm.LGBMRanker(**ranker_params)
+    self.click_ranker[data] = gbm.LGBMRanker(**self.ranker_params)
     self.click_ranker.fit(X=features['train'], y=labels['train'], group=q_list_sizes['train'],
                eval_set=[(features['valid'], labels['valid'])], eval_group=[q_list_sizes['valid']],
-               **fit_params)
-
+               **self.fit_params)
 
   def predict(self, X):
     """Get the score of each item.
@@ -162,9 +165,6 @@ class ClickLMARTRanker(BaseRanker):
     indices = [qset.query_indptr[qid] + rankings[i][:last_pos[i]]
                      for i, qid in enumerate(query_ids)]
     features = [qset.feature_vectors[idx] for idx in indices]
-    # features = [
-    # qset[query_ids[i]].feature_vectors[rankings[i]][:last_pos[i]]
-    #                  for i in range(len(query_ids))]
 
     # Cf. the following for an example:
     # https://mlexplained.com/2019/05/27/learning-to-rank-explained-with-code/
