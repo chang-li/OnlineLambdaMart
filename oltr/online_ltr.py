@@ -309,7 +309,7 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
     online_learners['EtE %d' % num_explore] = ExploreThenExploitOLTR(
       data.train_qset, num_explore, data.valid_qset, data.test_qset)
   # online_learners['FTL'] = OnlineLTR(data.train_qset, data.valid_qset, data.test_qset)
-  online_rankers = {lname:None for lname in online_rankers}
+  online_rankers = {lname:None for lname in online_learners}
   # online_rankers['FTL'] = None
   offline_rankers = {
     'Linear': LinRanker(num_features=136),
