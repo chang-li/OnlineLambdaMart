@@ -129,7 +129,7 @@ class OnlineLTR(object):
     self.observed_training_data.append((train_indices, train_labels,
                                         train_q_list_sizes))
 
-  def update_oltr_ranker(self, ranker_params, fit_params):
+  def update_ranker(self, ranker_params, fit_params):
     """"This method uses the training data from
     generate_training_data_from_clicks to improve the ranker."""
     if self.observed_training_data:
@@ -143,7 +143,7 @@ class OnlineLTR(object):
                                        for otd in self.observed_training_data])
     else:
       raise ValueError('OnlineLTR.generate_training_data_from_clicks()'
-        'should be called before OnlineLTR.update_oltr_ranker().')
+        'should be called before OnlineLTR.update_ranker().')
 
     ranker = gbm.LGBMRanker(**ranker_params)
     if 'early_stopping_rounds' in fit_params:
@@ -160,6 +160,19 @@ class OnlineLTR(object):
       ranker.fit(X=train_features, y=train_labels, group=train_q_list_sizes,
                  **fit_params)
     return ranker
+
+  def update_learner(self, ranker, num_train_queries, 
+                     ranker_params, fit_params):
+    # Collect feedback
+    train_query_ids, train_labels, train_rankings = \
+      self.get_labels_and_rankings(ranker, num_train_queries)
+    train_clicks = self.apply_click_model_to_labels_and_scores(
+      click_model, train_labels, train_rankings)
+    self.generate_training_data_from_clicks(
+      train_query_ids, train_clicks, train_rankings)
+
+    # Return retrained ranker
+    return self.update_ranker(ranker_params, fit_params)
 
   def evaluate_ranker(self, ranker, eval_params, query_ids=None, data='test'):
     """ Evaluate the ranker based on the queries in self.train_qset
@@ -208,10 +221,10 @@ class ExploreThenExploitOLTR(OnlineLTR):
     return super(ExploreThenExploitOLTR,
                  self).get_labels_and_rankings(ranker_, num_queries)
 
-  def update_oltr_ranker(self, ranker_params, fit_params):
+  def update_ranker(self, ranker_params, fit_params):
     self.iteration += 1
     return super(ExploreThenExploitOLTR,
-                 self).update_oltr_ranker(ranker_params, fit_params)
+                 self).update_ranker(ranker_params, fit_params)
 
 class Data:
   def __init__(self, train_path, valid_path, test_path):
@@ -287,9 +300,17 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
   # test_path = data_path
   ##########################################
 
-  # Follow the leader learner
-  ftl_learner = OnlineLTR(data.train_qset, data.valid_qset, data.test_qset)
-  oltr_ranker = None
+  # Online learners
+  online_learners = {
+    # Follow the Leader
+    'FTL': OnlineLTR(data.train_qset, data.valid_qset, data.test_qset),
+  }
+  # online_learners['FTL'] = OnlineLTR(data.train_qset, data.valid_qset, data.test_qset)
+  online_rankers = {
+    # Follow the Leader
+    'FTL': None,
+  }
+  # online_rankers['FTL'] = None
   offline_rankers = {
     'Linear': LinRanker(num_features=136),
     'Offline LambdaMART': LMARTRanker(
@@ -300,24 +321,25 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
 
   for ind in range(num_iterations):
     # Collect feedback
-    train_query_ids, train_labels, train_rankings = \
-      ftl_learner.get_labels_and_rankings(oltr_ranker, num_train_queries)
-    train_clicks = ftl_learner.apply_click_model_to_labels_and_scores(
-      click_model, train_labels, train_rankings)
-    ftl_learner.generate_training_data_from_clicks(train_query_ids, train_clicks, train_rankings)
+    # train_query_ids, train_labels, train_rankings = \
+    #   online_learners['FTL'].get_labels_and_rankings(online_rankers['FTL'], num_train_queries)
+    # train_clicks = online_learners['FTL'].apply_click_model_to_labels_and_scores(
+    #   click_model, train_labels, train_rankings)
+    # online_learners['FTL'].generate_training_data_from_clicks(train_query_ids, train_clicks, train_rankings)
 
     # Train OLTR
-    oltr_ranker = ftl_learner.update_oltr_ranker(oltr_ranker_params,
-                                             oltr_fit_params)
+    online_rankers['FTL'] = online_learners['FTL'].update_learner(
+      online_rankers['FTL'], num_train_queries,
+      oltr_ranker_params, oltr_fit_params)
 
     # Evaluation
-    test_query_ids = ftl_learner.sample_query_ids(num_test_queries, data='test')
+    test_query_ids = online_learners['FTL'].sample_query_ids(num_test_queries, data='test')
     # Online
-    oltr_eval_value = ftl_learner.evaluate_ranker(oltr_ranker, eval_params, query_ids=test_query_ids)
+    oltr_eval_value = online_learners['FTL'].evaluate_ranker(online_rankers['FTL'], eval_params, query_ids=test_query_ids)
     eval_results['OLTR'].append(oltr_eval_value)
     # Offline (baselines)
     for offline_model_name, ranker in offline_rankers.items():
-      eval_result = ftl_learner.evaluate_ranker(ranker, eval_params, query_ids=test_query_ids)
+      eval_result = online_learners['FTL'].evaluate_ranker(ranker, eval_params, query_ids=test_query_ids)
       eval_results[offline_model_name].append(eval_result)
 
     print('>>>>>>>>>>iteration: ', ind)
