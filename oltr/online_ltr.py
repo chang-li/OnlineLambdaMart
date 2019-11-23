@@ -349,7 +349,7 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
     print('>>>>>>>>>>iteration: ', ind)
     print('Offline LambdaMART (headroom) performance : ',
           eval_results['Offline LambdaMART'][-1])
-    print('Online LTR performance: ', eval_results['OLTR'][-1])
+    # print('Online LTR performance: ', eval_results['OLTR'][-1])
     print('Linear ranker (baseline) performance: ', eval_results['Linear'][-1])
   return eval_results
 
