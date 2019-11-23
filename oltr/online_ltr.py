@@ -203,11 +203,12 @@ class OnlineLTR(object):
              for qid in range(eval_qset.n_queries)]
     return np.mean(ndcgs)
 
+
 class ExploreThenExploitOLTR(OnlineLTR):
 
-  def __init__(self, train_qset, num_explore_iterations, 
+  def __init__(self, train_qset, num_explore_iterations,
                valid_qset=None, test_qset=None, seed=42):
-    super(ExploreThenExploitOLTR, 
+    super(ExploreThenExploitOLTR,
           self).__init__(train_qset=train_qset, valid_qset=valid_qset,
                          test_qset=test_qset, seed=seed)
     self.num_explore_iterations = num_explore_iterations
@@ -274,6 +275,15 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
     'metric': ndcg_at_k,
     'cutoff': 10
   }
+
+  ##########################################
+  # This is for debugging in Chang's laptop
+  ##########################################
+  # TRAIN_PATH = data_path
+  # VALID_PATH = data_path
+  # TEST_PATH = data_path
+  #########################################
+
   data = Data(TRAIN_PATH, VALID_PATH, TEST_PATH)
   lmart_ranker_params = {
     'min_child_samples': 50,
@@ -292,14 +302,6 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
   }
   click_model = DependentClickModel(user_type='pure_cascade')
 
-  ##########################################
-  # This is for debugging in Chang's laptop
-  ##########################################
-  # train_path = data_path
-  # valid_path = data_path
-  # test_path = data_path
-  ##########################################
-
   # Online learners
   online_learners = {
     # Follow the Leader
@@ -309,16 +311,16 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
     online_learners['EtE %d' % num_explore] = ExploreThenExploitOLTR(
       data.train_qset, num_explore, data.valid_qset, data.test_qset)
   # online_learners['FTL'] = OnlineLTR(data.train_qset, data.valid_qset, data.test_qset)
-  online_rankers = {lname:None for lname in online_learners}
+  online_rankers = {lname: None for lname in online_learners}
   # online_rankers['FTL'] = None
   offline_rankers = {
     'Linear': LinRanker(num_features=136),
     'Offline LambdaMART': LMARTRanker(
       data.train_qset, data.valid_qset, data.test_qset,
       lmart_ranker_params, lmart_fit_params),
-    'Click LambdaMART': LMARTRanker(
+    'Click LambdaMART': ClickLMARTRanker(
       data.train_qset, data.valid_qset, data.test_qset,
-      lmart_ranker_params, lmart_fit_params,
+      lmart_ranker_params, lmart_fit_params, click_model=click_model,
       total_number_of_clicked_queries=num_iterations * num_train_queries),
   }
   eval_results = defaultdict(list)
