@@ -13,6 +13,7 @@ class ClickLMARTRanker(BaseRanker):
     self.offline_train_qset = train_qset
     self.offline_valid_qset = valid_qset
     self.offline_test_qset = test_qset
+    self.offline_qset = {'train': train_qset, 'test': test_qset, 'valid': valid_qset}
     self.ranker_params = ranker_params
     self.fit_params = fit_params
     self.offline_ranker = gbm.LGBMRanker(**self.ranker_params)
@@ -60,7 +61,7 @@ class ClickLMARTRanker(BaseRanker):
     q_list_sizes = {}
     for data in ['train', 'valid', 'test']:
       indices = self.click_training_data[data][0]
-      features[data] = np.concatenate([self.offline_train_qset.feature_vectors[idx] for idx in indices])
+      features[data] = np.concatenate([self.offline_qset[data].feature_vectors[idx] for idx in indices])
       labels[data] = self.click_training_data[data][1]
       q_list_sizes[data] = self.click_training_data[data][2]
     self.click_ranker.fit(X=features['train'], y=labels['train'],
