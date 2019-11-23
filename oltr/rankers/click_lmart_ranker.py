@@ -6,7 +6,7 @@ import lightgbm as gbm
 class ClickLMARTRanker(BaseRanker):
 
   def __init__(self, train_qset, valid_qset, test_qset,
-               ranker_params, fit_params, num_queries, click_model,
+               ranker_params, fit_params, click_model,
                total_number_of_clicked_queries=10000):
     self.fit_params = fit_params
     self.click_model = click_model
@@ -16,21 +16,9 @@ class ClickLMARTRanker(BaseRanker):
     self.ranker_params = ranker_params
     self.fit_params = fit_params
     self.offline_ranker = gbm.LGBMRanker(**self.ranker_params)
-    self.click_ranker = gbm.LGBMRanker(**self.ranker_params)
     self.offline_fit()
-    self.num_training_queries = {
-        'train': int(.6 * total_number_of_clicked_queries),
-        'valid': int(.2 * total_number_of_clicked_queries),
-        'test': int(.2 * total_number_of_clicked_queries),
-        }
-    self.click_training_data = {}
-    for data in ['train', 'valid', 'test']:
-      query_ids, labels, rankings = \
-        self.get_labels_and_rankings(self.offline_ranker, num_queries, data)
-      clicks = self.apply_click_model_to_labels_and_scores(
-        click_model, labels, rankings)
-      self.click_training_data[data] = \
-        self.generate_training_data_from_clicks(query_ids, clicks, rankings, data)
+    self.click_ranker = gbm.LGBMRanker(**self.ranker_params)
+    self.online_fit(total_number_of_clicked_queries)
 
   def offline_fit(self):
     """
@@ -46,10 +34,27 @@ class ClickLMARTRanker(BaseRanker):
                     eval_set=[(valid_features, valid_labels)], eval_group=[valid_qid],
                     **self.fit_params)
 
-  def click_fit(self):
+  def click_fit(self, total_number_of_clicked_queries):
     """
-      Train the ranker on the training set
+      Train the ranker on the click training set
     """
+    self.num_training_queries = {
+        'train': int(.6 * total_number_of_clicked_queries),
+        'valid': int(.2 * total_number_of_clicked_queries),
+        'test': int(.2 * total_number_of_clicked_queries),
+        }
+    self.click_training_data = {}
+    for data in ['train', 'valid', 'test']:
+      query_ids, labels, rankings = \
+        self.get_labels_and_rankings(self.offline_ranker,
+                                     self.num_training_queries[data],
+                                     data)
+      clicks = self.apply_click_model_to_labels_and_scores(click_model,
+                                                           labels,
+                                                           rankings)
+      self.click_training_data[data] = \
+        self.generate_training_data_from_clicks(query_ids, clicks,
+                                                rankings, data)
     features = {}
     labels = {}
     q_list_sizes = {}
@@ -58,7 +63,6 @@ class ClickLMARTRanker(BaseRanker):
       features[data] = self.qset.feature_vectors[indices]
       labels[data] = self.click_training_data[data][1]
       q_list_sizes = self.click_training_data[data][2]
-    self.click_ranker[data] = gbm.LGBMRanker(**self.ranker_params)
     self.click_ranker.fit(X=features['train'], y=labels['train'], group=q_list_sizes['train'],
                eval_set=[(features['valid'], labels['valid'])], eval_group=[q_list_sizes['valid']],
                **self.fit_params)
@@ -73,7 +77,7 @@ class ClickLMARTRanker(BaseRanker):
     Returns:
       A vector of length num_items.
     """
-    return self.ranker.predict(X)
+    return self.click_ranker.predict(X)
 
   def sample_query_ids(self, num_queries, data='train'):
     qset = self.offline_train_qset
