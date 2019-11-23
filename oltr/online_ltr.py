@@ -161,7 +161,7 @@ class OnlineLTR(object):
                  **fit_params)
     return ranker
 
-  def update_learner(self, ranker, num_train_queries, 
+  def update_learner(self, ranker, num_train_queries, click_model,
                      ranker_params, fit_params):
     # Collect feedback
     train_query_ids, train_labels, train_rankings = \
@@ -329,7 +329,7 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
 
     # Train OLTR
     online_rankers['FTL'] = online_learners['FTL'].update_learner(
-      online_rankers['FTL'], num_train_queries,
+      online_rankers['FTL'], num_train_queries, click_model,
       oltr_ranker_params, oltr_fit_params)
 
     # Evaluation
