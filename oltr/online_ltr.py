@@ -287,7 +287,8 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
   # test_path = data_path
   ##########################################
 
-  learner = OnlineLTR(data.train_qset, data.valid_qset, data.test_qset)
+  # Follow the leader learner
+  ftl_learner = OnlineLTR(data.train_qset, data.valid_qset, data.test_qset)
   oltr_ranker = None
   offline_rankers = {
     'Linear': LinRanker(num_features=136),
@@ -300,23 +301,23 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
   for ind in range(num_iterations):
     # Collect feedback
     train_query_ids, train_labels, train_rankings = \
-      learner.get_labels_and_rankings(oltr_ranker, num_train_queries)
-    train_clicks = learner.apply_click_model_to_labels_and_scores(
+      ftl_learner.get_labels_and_rankings(oltr_ranker, num_train_queries)
+    train_clicks = ftl_learner.apply_click_model_to_labels_and_scores(
       click_model, train_labels, train_rankings)
-    learner.generate_training_data_from_clicks(train_query_ids, train_clicks, train_rankings)
+    ftl_learner.generate_training_data_from_clicks(train_query_ids, train_clicks, train_rankings)
 
     # Train OLTR
-    oltr_ranker = learner.update_oltr_ranker(oltr_ranker_params,
+    oltr_ranker = ftl_learner.update_oltr_ranker(oltr_ranker_params,
                                              oltr_fit_params)
 
     # Evaluation
-    test_query_ids = learner.sample_query_ids(num_test_queries, data='test')
+    test_query_ids = ftl_learner.sample_query_ids(num_test_queries, data='test')
     # Online
-    oltr_eval_value = learner.evaluate_ranker(oltr_ranker, eval_params, query_ids=test_query_ids)
+    oltr_eval_value = ftl_learner.evaluate_ranker(oltr_ranker, eval_params, query_ids=test_query_ids)
     eval_results['OLTR'].append(oltr_eval_value)
     # Offline (baselines)
     for offline_model_name, ranker in offline_rankers.items():
-      eval_result = learner.evaluate_ranker(ranker, eval_params, query_ids=test_query_ids)
+      eval_result = ftl_learner.evaluate_ranker(ranker, eval_params, query_ids=test_query_ids)
       eval_results[offline_model_name].append(eval_result)
 
     print('>>>>>>>>>>iteration: ', ind)
