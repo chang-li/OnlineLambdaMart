@@ -190,6 +190,28 @@ class OnlineLTR(object):
              for qid in range(eval_qset.n_queries)]
     return np.mean(ndcgs)
 
+class ExploreThenExploitOLTR(OnlineLTR):
+
+  def __init__(self, train_qset, num_explore_iterations, 
+               valid_qset=None, test_qset=None, seed=42):
+    super(ExploreThenExploitOLTR, 
+          self).__init__(train_qset=train_qset, valid_qset=valid_qset,
+                         test_qset=test_qset, seed=seed)
+    self.num_explore_iterations = num_explore_iterations
+    self.iteration = 0
+
+  def get_labels_and_rankings(self, ranker, num_queries):
+    if self.iteration < self.num_explore_iterations:
+      ranker_ = None
+    else:
+      ranker_ = ranker
+    return super(ExploreThenExploitOLTR,
+                 self).get_labels_and_rankings(ranker_, num_queries)
+
+  def update_oltr_ranker(self, ranker_params, fit_params):
+    self.iteration += 1
+    return super(ExploreThenExploitOLTR,
+                 self).update_oltr_ranker(ranker_params, fit_params)
 
 class Data:
   def __init__(self, train_path, valid_path, test_path):
@@ -286,100 +308,6 @@ def oltr_loop(data_path, num_iterations=20, num_train_queries=5, num_test_querie
     # Train OLTR
     oltr_ranker = learner.update_oltr_ranker(oltr_ranker_params,
                                              oltr_fit_params)
-
-    # Evaluation
-    test_query_ids = learner.sample_query_ids(num_test_queries, data='test')
-    # Online
-    oltr_eval_value = learner.evaluate_ranker(oltr_ranker, eval_params, query_ids=test_query_ids)
-    eval_results['OLTR'].append(oltr_eval_value)
-    # Offline (baselines)
-    for offline_model_name, ranker in offline_rankers.items():
-      eval_result = learner.evaluate_ranker(ranker, eval_params, query_ids=test_query_ids)
-      eval_results[offline_model_name].append(eval_result)
-
-    print('>>>>>>>>>>iteration: ', ind)
-    print('Offline LambdaMART (headroom) performance : ',
-          eval_results['Offline LambdaMART'][-1])
-    print('Online LTR performance: ', eval_results['OLTR'][-1])
-    print('Linear ranker (baseline) performance: ', eval_results['Linear'][-1])
-  return eval_results
-
-
-def explore_then_exploit_loop(
-  data_path, num_iterations=20, num_explore_iterations=5, num_train_queries=5, num_test_queries=100):
-  oltr_ranker_params = {
-    'min_child_samples': 50,
-    'min_child_weight': 0,
-    'n_estimators': 500,
-    'learning_rate': 0.02,
-    'num_leaves': 400,
-    'boosting_type': 'gbdt',
-    'objective': 'lambdarank',
-  }
-  oltr_fit_params = {
-    'early_stopping_rounds': 50,
-    'eval_metric': 'ndcg',
-    'eval_at': 5,
-    'verbose': 100,
-  }
-  eval_params = {
-    'metric': ndcg_at_k,
-    'cutoff': 10
-  }
-  data = Data(TRAIN_PATH, VALID_PATH, TEST_PATH)
-  lmart_ranker_params = {
-    'min_child_samples': 50,
-    'min_child_weight': 0,
-    'n_estimators': 500,
-    'learning_rate': 0.02,
-    'num_leaves': 400,
-    'boosting_type': 'gbdt',
-    'objective': 'lambdarank',
-  }
-  lmart_fit_params = {
-    'early_stopping_rounds': 50,
-    'eval_metric': 'ndcg',
-    'eval_at': 5,
-    'verbose': 50,
-  }
-  click_model = DependentClickModel(user_type='pure_cascade')
-
-  ##########################################
-  # This is for debugging in Chang's laptop
-  ##########################################
-  # train_path = data_path
-  # valid_path = data_path
-  # test_path = data_path
-  ##########################################
-
-  learner = OnlineLTR(data.train_qset, data.valid_qset, data.test_qset)
-  oltr_ranker = None
-  offline_rankers = {
-    'Linear': LinRanker(num_features=136),
-    'Offline LambdaMART': LMARTRanker(
-      data.train_qset, data.valid_qset, data.test_qset,
-      lmart_ranker_params, lmart_fit_params),
-    'Click LambdaMART': LMARTRanker(
-      data.train_qset, data.valid_qset, data.test_qset,
-      lmart_ranker_params, lmart_fit_params, total_number_of_clicked_queries=NUM_QUERIES_FOR_CLICK_LMART),
-  }
-  eval_results = defaultdict(list)
-
-  for ind in range(num_iterations):
-    # Collect feedback
-    train_query_ids, train_labels, train_rankings = \
-      learner.get_labels_and_rankings(oltr_ranker, num_train_queries)
-    train_clicks = learner.apply_click_model_to_labels_and_scores(
-      click_model, train_labels, train_rankings)
-    learner.generate_training_data_from_clicks(train_query_ids, train_clicks, train_rankings)
-
-    if ind < num_explore_iterations:
-      # Use the random ranker in the exploration phase:
-      oltr_ranker = None
-    else:
-      # Train a new ranker in the exploitation phase:
-      oltr_ranker = learner.update_oltr_ranker(oltr_ranker_params,
-                                               oltr_fit_params)
 
     # Evaluation
     test_query_ids = learner.sample_query_ids(num_test_queries, data='test')
