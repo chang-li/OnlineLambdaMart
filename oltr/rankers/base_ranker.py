@@ -6,7 +6,7 @@ class BaseRanker(object):
   def fit(self):
     raise NotImplementedError
 
-  def predict(self):
+  def predict(self, X):
     raise NotImplementedError
 
 

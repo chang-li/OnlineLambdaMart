@@ -2,7 +2,7 @@ import numpy as np
 
 Rel_To_Prob = {
     "perfect": {'c_prob': np.asarray([.0, .2, .4, .8, 1.]),
-                's_prob': np.ones(5)},
+                's_prob': np.zeros(5)},
     "informational": {'c_prob': np.asarray([.4, .6, .7, .8, .9]),
                       's_prob': np.asarray([.1, .2, .3, .4, .5])},
     "navigational": {'c_prob': np.asarray([.05, .3, .5, .7, .95]),
@@ -20,7 +20,7 @@ class AbstractClickSimulator(object):
         self.name = 'abstract Model'
 
     def get_click(self, r):
-        raise NotImplemented
+        raise NotImplementedError
 
     def __str__(self):
         return self.name

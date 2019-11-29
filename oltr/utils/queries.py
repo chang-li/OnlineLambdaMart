@@ -1011,7 +1011,7 @@ def concatenate(queries):
     feature_indices = queries[0].feature_indices
 
     return Queries(feature_vectors, relevance_scores, query_indptr,
-                   max_score, False, query_ids, feature_indices)
+                   max_score, True, query_ids, feature_indices)
 
 
 def find_constant_features(queries):

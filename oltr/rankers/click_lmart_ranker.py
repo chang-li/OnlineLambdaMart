@@ -7,7 +7,7 @@ class ClickLMARTRanker(BaseRanker):
 
   def __init__(self, train_qset, valid_qset, test_qset,
                ranker_params, fit_params, click_model,
-               total_number_of_clicked_queries=10000):
+               total_number_of_clicked_queries=10000, learn_from_random=False):
     self.fit_params = fit_params
     self.click_model = click_model
     self.offline_train_qset = train_qset
@@ -16,8 +16,11 @@ class ClickLMARTRanker(BaseRanker):
     self.offline_qset = {'train': train_qset, 'test': test_qset, 'valid': valid_qset}
     self.ranker_params = ranker_params
     self.fit_params = fit_params
-    self.offline_ranker = gbm.LGBMRanker(**self.ranker_params)
-    self.offline_fit()
+    if learn_from_random:
+        self.offline_ranker = None
+    else:
+        self.offline_ranker = gbm.LGBMRanker(**self.ranker_params)
+        self.offline_fit()
     self.click_ranker = gbm.LGBMRanker(**self.ranker_params)
     self.click_fit(total_number_of_clicked_queries)
 
@@ -34,6 +37,18 @@ class ClickLMARTRanker(BaseRanker):
     self.offline_ranker.fit(X=train_features, y=train_labels, group=train_qid,
                     eval_set=[(valid_features, valid_labels)], eval_group=[valid_qid],
                     **self.fit_params)
+
+  def predict(self, X):
+    """Get the score of each item.
+
+    Args:
+      X: A 2d array of size [num_items, num_features] encoding the features of
+        each item.
+
+    Returns:
+      A vector of length num_items.
+    """
+    return self.click_ranker.predict(X)
 
   def click_fit(self, total_number_of_clicked_queries):
     """
@@ -58,37 +73,17 @@ class ClickLMARTRanker(BaseRanker):
                                                 rankings, data)
     features = {}
     labels = {}
-    q_list_sizes = {}
+    query_group = {}
     for data in ['train', 'valid', 'test']:
       indices = self.click_training_data[data][0]
       features[data] = np.concatenate([self.offline_qset[data].feature_vectors[idx] for idx in indices])
       labels[data] = self.click_training_data[data][1]
-      q_list_sizes[data] = self.click_training_data[data][2]
+      query_group[data] = self.click_training_data[data][2]
     self.click_ranker.fit(X=features['train'], y=labels['train'],
-                          group=q_list_sizes['train'],
+                          group=query_group['train'],
                           eval_set=[(features['valid'], labels['valid'])],
-                          eval_group=[q_list_sizes['valid']],
+                          eval_group=[query_group['valid']],
                           **self.fit_params)
-
-  def predict(self, X):
-    """Get the score of each item.
-
-    Args:
-      X: A 2d array of size [num_items, num_features] encoding the features of
-        each item.
-
-    Returns:
-      A vector of length num_items.
-    """
-    return self.click_ranker.predict(X)
-
-  def sample_query_ids(self, num_queries, data='train'):
-    qset = self.offline_train_qset
-    if data == 'valid':
-      qset = self.offline_valid_qset
-    if data == 'test':
-      qset = self.offline_test_qset
-    return np.random.choice(qset.n_queries, num_queries)
 
   def get_labels_and_rankings(self, ranker, num_queries, data='train'):
     """Apply a ranker to a subsample of the data and get the labels and ranks.
@@ -106,7 +101,7 @@ class ClickLMARTRanker(BaseRanker):
       qset = self.offline_valid_qset
     if data == 'test':
       qset = self.offline_test_qset
-    query_ids = self.sample_query_ids(num_queries)
+    query_ids = self.sample_query_ids(num_queries, data)
     n_docs_per_query = [qset[qid].document_count() for qid in query_ids]
     indices = [0] + np.cumsum(n_docs_per_query).tolist()
     labels = [qset[qid].relevance_scores for qid in query_ids]
@@ -123,6 +118,14 @@ class ClickLMARTRanker(BaseRanker):
                   for i in range(num_queries)]
 
     return query_ids, labels, rankings
+
+  def sample_query_ids(self, num_queries, data='train'):
+      qset = self.offline_train_qset
+      if data == 'valid':
+          qset = self.offline_valid_qset
+      if data == 'test':
+          qset = self.offline_test_qset
+      return np.random.choice(qset.n_queries, num_queries)
 
   def apply_click_model_to_labels_and_scores(self, click_model, labels,
                                              rankings):
@@ -172,15 +175,15 @@ class ClickLMARTRanker(BaseRanker):
 
     indices = [qset.query_indptr[qid] + rankings[i][:last_pos[i]]
                      for i, qid in enumerate(query_ids)]
-    features = [qset.feature_vectors[idx] for idx in indices]
 
     # Cf. the following for an example:
     # https://mlexplained.com/2019/05/27/learning-to-rank-explained-with-code/
-    q_list_sizes = [feature.shape[0] for feature in features]
+    query_group = np.asarray(last_pos)
 
+    # features = [qset.feature_vectors[idx] for idx in indices]
     # features = np.concatenate(features)
     labels = np.concatenate(labels)
 
-    return (indices, labels, q_list_sizes)
+    return (indices, labels, query_group)
 
 
