@@ -66,7 +66,8 @@ def oltr_loop(data_path, fold=-1, num_iterations=20, num_train_queries=5, num_te
     # Follow the Leader
     'FTL': OnlineLTR(data.train_qset, data.valid_qset, data.test_qset),
   }
-  for num_explore in range(num_iterations):
+  for portion in np.arange(0, 11, 2)/10:
+    num_explore = int(portion * num_iterations)
     online_learners['EtE %d' % num_explore] = ExploreThenExploitOLTR(
       data.train_qset, num_explore, data.valid_qset, data.test_qset)
 
@@ -74,9 +75,9 @@ def oltr_loop(data_path, fold=-1, num_iterations=20, num_train_queries=5, num_te
 
   offline_rankers = {
     'Linear': LinRanker(num_features=136),
-    'Offline LambdaMART': LMARTRanker(
-      data.train_qset, data.valid_qset, data.test_qset,
-      lmart_ranker_params, lmart_fit_params),
+    # 'Offline LambdaMART': LMARTRanker(
+    #   data.train_qset, data.valid_qset, data.test_qset,
+    #   lmart_ranker_params, lmart_fit_params),
     'Click LambdaMART': ClickLMARTRanker(
       data.train_qset, data.valid_qset, data.test_qset,
       lmart_ranker_params, lmart_fit_params, click_model=click_model,
@@ -86,6 +87,8 @@ def oltr_loop(data_path, fold=-1, num_iterations=20, num_train_queries=5, num_te
       lmart_ranker_params, lmart_fit_params, click_model=click_model,
       total_number_of_clicked_queries=num_iterations * num_train_queries, learn_from_random=True),
   }
+  offline_rankers['Offline LambdaMART'] = offline_rankers['Click LambdaMART'].offline_ranker
+
   eval_results = defaultdict(list)
 
   for ind in range(num_iterations):
@@ -127,17 +130,23 @@ def plot_eval_results(eval_results, out_path='/tmp/plot.png'):
 
 
 if __name__ == '__main__':
-  num_iterations = 100
-  num_train_queries = 100
-  num_test_queries = 1000
-  
-  oltr_data_path = DATA_PATH
-  
-  start = timeit.default_timer()
-  eval_results = oltr_loop(oltr_data_path, 1, num_iterations, num_train_queries, num_test_queries)
-  with open('../results/mslr30k.pk', 'rb') as f:
-      pk.dump(eval_results, f)
+  num_iterations = 10
+  num_train_queries = 10
+  num_test_queries = 100
 
+  start = timeit.default_timer()
+
+
+  # oltr_data_path = '../data/sample/'
+  # eval_results = oltr_loop(oltr_data_path, -1, num_iterations, num_train_queries, num_test_queries)
+  # with open('../results/mslr30k.pkl', 'wb') as f:
+  #     pk.dump(eval_results, f)
+
+  # slurm
+  oltr_data_path = DATA_PATH
+  eval_results = oltr_loop(oltr_data_path, 1, num_iterations, num_train_queries, num_test_queries)
+  with open('../results/mslr30k.pkl', 'wb') as f:
+      pk.dump(eval_results, f)
   # plot_eval_results(eval_results,
   #   out_path='/tmp/oltr_performance_%s_%s_%s.png'
   #   % (num_iterations, num_train_queries, num_test_queries))
