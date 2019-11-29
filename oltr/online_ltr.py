@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 import os
 import sys
 import timeit
-import pickle as pk
 from collections import defaultdict
 
 from oltr.utils.metric import ndcg_at_k
@@ -140,10 +139,7 @@ if __name__ == '__main__':
     num_test_queries = int(sys.argv[3])
   start = timeit.default_timer()
   eval_results = oltr_loop(oltr_data_path, -1, num_iterations, num_train_queries, num_test_queries)
-  with open('../results/mslr30k.pk', 'rb') as f:
-      pk.dump(eval_results, f)
-
-  # plot_eval_results(eval_results,
-  #   out_path='/tmp/oltr_performance_%s_%s_%s.png'
-  #   % (num_iterations, num_train_queries, num_test_queries))
+  plot_eval_results(eval_results,
+    out_path='/tmp/oltr_performance_%s_%s_%s.png'
+    % (num_iterations, num_train_queries, num_test_queries))
   print('running time: ', timeit.default_timer() - start)
