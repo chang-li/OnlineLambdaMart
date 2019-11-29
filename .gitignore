@@ -9,6 +9,8 @@
 datasets/*
 *.ipynb_checkpoints
 .DS_Store
+*out
+*results
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
