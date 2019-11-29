@@ -16,7 +16,10 @@ DATA_PATH = '/ivi/ilps/personal/cli1/datasets/letor/mslr/'
 
 NUM_QUERIES_FOR_CLICK_LMART = 10 ** 4
 
-def oltr_loop(data_path, fold=-1, num_iterations=20, num_train_queries=5, num_test_queries=100):
+
+
+
+def oltr_loop(data_path, fold=-1, num_iterations=20, num_train_queries=5, num_test_queries=100, user_type='pure_cascade'):
   oltr_ranker_params = {
     'min_child_samples': 50,
     'min_child_weight': 0,
@@ -59,7 +62,7 @@ def oltr_loop(data_path, fold=-1, num_iterations=20, num_train_queries=5, num_te
     'eval_at': 5,
     'verbose': 50,
   }
-  click_model = DependentClickModel(user_type='pure_cascade')
+  click_model = DependentClickModel(user_type=user_type)
 
   # Online learners
   online_learners = {
@@ -130,9 +133,10 @@ def plot_eval_results(eval_results, out_path='/tmp/plot.png'):
 
 
 if __name__ == '__main__':
-  num_iterations = 10
-  num_train_queries = 10
-  num_test_queries = 100
+  num_iterations = 100
+  num_train_queries = 100
+  num_test_queries = 1000
+  user_type = 'perfect'
 
   start = timeit.default_timer()
 
@@ -144,8 +148,8 @@ if __name__ == '__main__':
 
   # slurm
   oltr_data_path = DATA_PATH
-  eval_results = oltr_loop(oltr_data_path, 1, num_iterations, num_train_queries, num_test_queries)
-  with open('../results/mslr30k.pkl', 'wb') as f:
+  eval_results = oltr_loop(oltr_data_path, 1, num_iterations, num_train_queries, num_test_queries, user_type)
+  with open('results/mslr30k-'+user_type+'.pkl', 'wb') as f:
       pk.dump(eval_results, f)
   # plot_eval_results(eval_results,
   #   out_path='/tmp/oltr_performance_%s_%s_%s.png'
