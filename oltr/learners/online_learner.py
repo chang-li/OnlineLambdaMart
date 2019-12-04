@@ -6,7 +6,7 @@ from oltr.utils.queries import Queries, find_constant_features
 
 
 class OnlineLTR(object):
-
+  name = 'OnlineLTR'
   def __init__(self, train_qset, valid_qset=None, test_qset=None, seed=42):
 
     self.seed = seed
@@ -106,10 +106,10 @@ class OnlineLTR(object):
 
     train_indices = [self.train_qset.query_indptr[qid] + rankings[i][:last_pos[i]]
                      for i, qid in enumerate(query_ids)]
-    
+
     # Cf. the following for an example:
     # https://mlexplained.com/2019/05/27/learning-to-rank-explained-with-code/
-    
+
     # train_features = [self.train_qset.feature_vectors[idx] for idx in train_indices]
     # train_features = np.concatenate(train_features)
     # train_query_group = [feature.shape[0] for feature in train_features]

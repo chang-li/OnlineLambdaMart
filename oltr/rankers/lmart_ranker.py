@@ -4,9 +4,10 @@ import lightgbm as gbm
 
 
 class LMARTRanker(BaseRanker):
-
+  name = 'LMARTRanker'
   def __init__(self, train_qset, valid_qset, test_qset,
                ranker_params, fit_params):
+    self.name = self.name + '-' + 'n_estimators-%d-learning_rate%.2f' % (ranker_params['n_estimators'], ranker_params['learning_rate'])
     self.train_qset = train_qset
     self.valid_qset = valid_qset
     self.test_qset = test_qset

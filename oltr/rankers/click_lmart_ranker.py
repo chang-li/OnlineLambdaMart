@@ -4,10 +4,13 @@ import lightgbm as gbm
 
 
 class ClickLMARTRanker(BaseRanker):
+  name = 'ClickLMARTRanker'
 
   def __init__(self, train_qset, valid_qset, test_qset,
                ranker_params, fit_params, click_model,
                total_number_of_clicked_queries=10000, learn_from_random=False):
+    self.name = self.name + '-' + 'n_estimators-%d-learning_rate%.2f' % \
+                (ranker_params['n_estimators'], ranker_params['learning_rate'])
     self.fit_params = fit_params
     self.click_model = click_model
     self.offline_train_qset = train_qset
@@ -65,6 +68,9 @@ class ClickLMARTRanker(BaseRanker):
         self.get_labels_and_rankings(self.offline_ranker,
                                      self.num_training_queries[data],
                                      data)
+      query_ids = np.tile(query_ids, 10)
+      labels = labels * 10
+      rankings = rankings * 10
       clicks = self.apply_click_model_to_labels_and_scores(self.click_model,
                                                            labels,
                                                            rankings)

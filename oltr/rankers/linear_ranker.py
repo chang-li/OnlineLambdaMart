@@ -3,6 +3,7 @@ import numpy as np
 
 
 class LinRanker(BaseRanker):
+  nanme = 'LinRanker'
   def __init__(self, weights=None, num_features=136):
     if not weights:
       self.weights = np.mat(np.ones([num_features, 1]))

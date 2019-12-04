@@ -1,7 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-import sys
 import timeit
 import pickle as pk
 from collections import defaultdict
@@ -13,9 +11,6 @@ from oltr.rankers import LinRanker, LMARTRanker, ClickLMARTRanker
 from oltr.learners import OnlineLTR, ExploreThenExploitOLTR
 
 DATA_PATH = '/ivi/ilps/personal/cli1/datasets/letor/mslr/'
-
-NUM_QUERIES_FOR_CLICK_LMART = 10 ** 4
-
 
 
 
@@ -32,7 +27,7 @@ def oltr_loop(data_path, fold=-1, num_iterations=20, num_train_queries=5, num_te
   oltr_fit_params = {
     'early_stopping_rounds': 50,
     'eval_metric': 'ndcg',
-    'eval_at': 5,
+    'eval_at': 10,
     'verbose': 100,
   }
   eval_params = {
@@ -69,10 +64,10 @@ def oltr_loop(data_path, fold=-1, num_iterations=20, num_train_queries=5, num_te
     # Follow the Leader
     'FTL': OnlineLTR(data.train_qset, data.valid_qset, data.test_qset),
   }
-  for portion in np.arange(0, 11, 2)/10:
-    num_explore = int(portion * num_iterations)
-    online_learners['EtE %d' % num_explore] = ExploreThenExploitOLTR(
-      data.train_qset, num_explore, data.valid_qset, data.test_qset)
+  # for portion in np.arange(0, 11, 2)/10:
+  #   num_explore = int(portion * num_iterations)
+  #   online_learners['EtE %d' % num_explore] = ExploreThenExploitOLTR(
+  #     data.train_qset, num_explore, data.valid_qset, data.test_qset)
 
   online_rankers = {lname: None for lname in online_learners}
 
@@ -84,31 +79,31 @@ def oltr_loop(data_path, fold=-1, num_iterations=20, num_train_queries=5, num_te
     'Click LambdaMART': ClickLMARTRanker(
       data.train_qset, data.valid_qset, data.test_qset,
       lmart_ranker_params, lmart_fit_params, click_model=click_model,
-      total_number_of_clicked_queries=num_iterations * num_train_queries),
+      total_number_of_clicked_queries=30000),
     'Click LambdaMART Random': ClickLMARTRanker(
       data.train_qset, data.valid_qset, data.test_qset,
       lmart_ranker_params, lmart_fit_params, click_model=click_model,
-      total_number_of_clicked_queries=num_iterations * num_train_queries, learn_from_random=True),
+      total_number_of_clicked_queries=30000, learn_from_random=True),
   }
   offline_rankers['Offline LambdaMART'] = offline_rankers['Click LambdaMART'].offline_ranker
 
   eval_results = defaultdict(list)
 
   for ind in range(num_iterations):
-    # Train OLTR
-    for lname in online_learners:
-      online_rankers[lname] = online_learners[lname].update_learner(
-        online_rankers[lname], num_train_queries, click_model,
-        oltr_ranker_params, oltr_fit_params)
+    # # Train OLTR
+    # for lname in online_learners:
+    #   online_rankers[lname] = online_learners[lname].update_learner(
+    #     online_rankers[lname], num_train_queries, click_model,
+    #     oltr_ranker_params, oltr_fit_params)
 
     # Evaluation
     test_query_ids = online_learners['FTL'].sample_query_ids(num_test_queries,
                                                              data='test')
     # Online
-    for lname in online_learners:
-      oltr_eval_value = online_learners[lname].evaluate_ranker(
-        online_rankers[lname], eval_params, query_ids=test_query_ids)
-      eval_results[lname].append(oltr_eval_value)
+    # for lname in online_learners:
+    #   oltr_eval_value = online_learners[lname].evaluate_ranker(
+    #     online_rankers[lname], eval_params, query_ids=test_query_ids)
+    #   eval_results[lname].append(oltr_eval_value)
     # Offline (baselines)
     for offline_model_name, ranker in offline_rankers.items():
       eval_result = online_learners['FTL'].evaluate_ranker(ranker, eval_params,
@@ -133,10 +128,10 @@ def plot_eval_results(eval_results, out_path='/tmp/plot.png'):
 
 
 if __name__ == '__main__':
-  num_iterations = 100
+  num_iterations = 10
   num_train_queries = 100
-  num_test_queries = 1000
-  user_type = 'perfect'
+  num_test_queries = 6000
+  user_type = 'pure_cascade'
 
   start = timeit.default_timer()
 
